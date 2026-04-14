@@ -2,6 +2,4 @@
 "@omnigraph/grpc": patch
 ---
 dependencies updates:
-  - Updated dependency [`@graphql-mesh/cross-helpers@^0.4.13` ↗︎](https://www.npmjs.com/package/@graphql-mesh/cross-helpers/v/0.4.13) (from `^0.4.12`, in `dependencies`)
-  - Updated dependency [`@graphql-tools/utils@^11.0.1` ↗︎](https://www.npmjs.com/package/@graphql-tools/utils/v/11.0.1) (from `^11.0.0`, in `dependencies`)
   - Updated dependency [`globby@^16.2.0` ↗︎](https://www.npmjs.com/package/globby/v/16.2.0) (from `^11.1.0`, in `dependencies`)
