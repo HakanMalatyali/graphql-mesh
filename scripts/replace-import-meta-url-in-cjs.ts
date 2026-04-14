@@ -1,7 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'url';
-import globby from 'globby';
+import { globby } from 'globby';
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
 const __packages = path.join(__dirname, '..', 'packages');

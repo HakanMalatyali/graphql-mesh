@@ -1,4 +1,4 @@
-import globby from 'globby';
+import { globby } from 'globby';
 import { specifiedDirectives } from 'graphql';
 import {
   SchemaComposer,

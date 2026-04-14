@@ -72,7 +72,14 @@ if (process.env.E2E_TEST && process.env.CI && !isLinux) {
   }
 }
 
-const ESM_PACKAGES = ['@neo4j/cypher-builder'];
+const ESM_PACKAGES = [
+  '@neo4j/cypher-builder',
+  'globby',
+  '@sindresorhus/merge-streams',
+  'slash',
+  'unicorn-magic',
+  'is-path-inside',
+];
 
 /** @type {import('jest').Config} */
 module.exports = {
