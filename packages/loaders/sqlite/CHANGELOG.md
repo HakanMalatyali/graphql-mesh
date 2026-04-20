@@ -1,5 +1,19 @@
 # @omnigraph/sqlite
 
+## 0.8.28
+
+### Patch Changes
+
+- [#9430](https://github.com/ardatan/graphql-mesh/pull/9430)
+  [`8c7b764`](https://github.com/ardatan/graphql-mesh/commit/8c7b764dbd84356244f6e84dc36b7a3c1fc37a71)
+  Thanks [@dependabot](https://github.com/apps/dependabot)! - dependencies updates:
+  - Updated dependency
+    [`@graphql-tools/delegate@^12.0.14` ↗︎](https://www.npmjs.com/package/@graphql-tools/delegate/v/12.0.14)
+    (from `^12.0.13`, in `dependencies`)
+- Updated dependencies
+  [[`8c7b764`](https://github.com/ardatan/graphql-mesh/commit/8c7b764dbd84356244f6e84dc36b7a3c1fc37a71)]:
+  - @graphql-mesh/types@0.104.28
+
 ## 0.8.27
 
 ### Patch Changes

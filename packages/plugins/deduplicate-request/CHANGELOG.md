@@ -1,5 +1,15 @@
 # @graphql-mesh/plugin-deduplicate-request
 
+## 0.104.36
+
+### Patch Changes
+
+- Updated dependencies
+  [[`8c7b764`](https://github.com/ardatan/graphql-mesh/commit/8c7b764dbd84356244f6e84dc36b7a3c1fc37a71),
+  [`8c7b764`](https://github.com/ardatan/graphql-mesh/commit/8c7b764dbd84356244f6e84dc36b7a3c1fc37a71)]:
+  - @graphql-mesh/types@0.104.28
+  - @graphql-mesh/utils@0.104.36
+
 ## 0.104.35
 
 ### Patch Changes

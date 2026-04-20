@@ -1,5 +1,31 @@
 # @omnigraph/soap
 
+## 0.107.44
+
+### Patch Changes
+
+- [#9429](https://github.com/ardatan/graphql-mesh/pull/9429)
+  [`fa6f8ee`](https://github.com/ardatan/graphql-mesh/commit/fa6f8ee58af8b4203cc5fe1f9c79b7c266d25257)
+  Thanks [@dependabot](https://github.com/apps/dependabot)! - dependencies updates:
+  - Updated dependency
+    [`fast-xml-parser@^5.6.0` ↗︎](https://www.npmjs.com/package/fast-xml-parser/v/5.6.0) (from
+    `^5.5.12`, in `dependencies`)
+
+- [#9430](https://github.com/ardatan/graphql-mesh/pull/9430)
+  [`8c7b764`](https://github.com/ardatan/graphql-mesh/commit/8c7b764dbd84356244f6e84dc36b7a3c1fc37a71)
+  Thanks [@dependabot](https://github.com/apps/dependabot)! - dependencies updates:
+  - Updated dependency
+    [`@graphql-mesh/transport-common@^1.0.16` ↗︎](https://www.npmjs.com/package/@graphql-mesh/transport-common/v/1.0.16)
+    (from `^1.0.15`, in `dependencies`)
+- Updated dependencies
+  [[`fa6f8ee`](https://github.com/ardatan/graphql-mesh/commit/fa6f8ee58af8b4203cc5fe1f9c79b7c266d25257),
+  [`8c7b764`](https://github.com/ardatan/graphql-mesh/commit/8c7b764dbd84356244f6e84dc36b7a3c1fc37a71),
+  [`8c7b764`](https://github.com/ardatan/graphql-mesh/commit/8c7b764dbd84356244f6e84dc36b7a3c1fc37a71),
+  [`8c7b764`](https://github.com/ardatan/graphql-mesh/commit/8c7b764dbd84356244f6e84dc36b7a3c1fc37a71)]:
+  - @graphql-mesh/transport-soap@0.10.44
+  - @graphql-mesh/types@0.104.28
+  - @graphql-mesh/utils@0.104.36
+
 ## 0.107.43
 
 ### Patch Changes

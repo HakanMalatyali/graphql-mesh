@@ -1,5 +1,13 @@
 # @graphql-mesh/plugin-hive
 
+## 0.105.13
+
+### Patch Changes
+
+- Updated dependencies
+  [[`8c7b764`](https://github.com/ardatan/graphql-mesh/commit/8c7b764dbd84356244f6e84dc36b7a3c1fc37a71)]:
+  - @graphql-mesh/types@0.104.28
+
 ## 0.105.12
 
 ### Patch Changes

@@ -1,5 +1,23 @@
 # @graphql-mesh/migrate-config-cli
 
+## 1.7.39
+
+### Patch Changes
+
+- [#9429](https://github.com/ardatan/graphql-mesh/pull/9429)
+  [`fa6f8ee`](https://github.com/ardatan/graphql-mesh/commit/fa6f8ee58af8b4203cc5fe1f9c79b7c266d25257)
+  Thanks [@dependabot](https://github.com/apps/dependabot)! - dependencies updates:
+  - Updated dependency [`prettier@^3.8.3` ↗︎](https://www.npmjs.com/package/prettier/v/3.8.3) (from
+    `^3.8.2`, in `dependencies`)
+- Updated dependencies
+  [[`8c7b764`](https://github.com/ardatan/graphql-mesh/commit/8c7b764dbd84356244f6e84dc36b7a3c1fc37a71),
+  [`8c7b764`](https://github.com/ardatan/graphql-mesh/commit/8c7b764dbd84356244f6e84dc36b7a3c1fc37a71)]:
+  - @graphql-mesh/types@0.104.28
+  - @graphql-mesh/utils@0.104.36
+  - @graphql-mesh/compose-cli@1.5.31
+  - @graphql-mesh/cli@0.100.51
+  - @graphql-mesh/config@0.108.44
+
 ## 1.7.38
 
 ### Patch Changes

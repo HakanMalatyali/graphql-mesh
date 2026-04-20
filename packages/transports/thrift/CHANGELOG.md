@@ -1,5 +1,19 @@
 # @graphql-mesh/transport-thrift
 
+## 0.9.37
+
+### Patch Changes
+
+- [#9430](https://github.com/ardatan/graphql-mesh/pull/9430)
+  [`8c7b764`](https://github.com/ardatan/graphql-mesh/commit/8c7b764dbd84356244f6e84dc36b7a3c1fc37a71)
+  Thanks [@dependabot](https://github.com/apps/dependabot)! - dependencies updates:
+  - Updated dependency
+    [`@graphql-mesh/transport-common@^1.0.16` ↗︎](https://www.npmjs.com/package/@graphql-mesh/transport-common/v/1.0.16)
+    (from `^1.0.15`, in `dependencies`)
+- Updated dependencies
+  [[`8c7b764`](https://github.com/ardatan/graphql-mesh/commit/8c7b764dbd84356244f6e84dc36b7a3c1fc37a71)]:
+  - @graphql-mesh/utils@0.104.36
+
 ## 0.9.36
 
 ### Patch Changes

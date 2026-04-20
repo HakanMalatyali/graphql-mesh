@@ -1,5 +1,27 @@
 # @omnigraph/json-schema
 
+## 0.109.40
+
+### Patch Changes
+
+- [#9430](https://github.com/ardatan/graphql-mesh/pull/9430)
+  [`8c7b764`](https://github.com/ardatan/graphql-mesh/commit/8c7b764dbd84356244f6e84dc36b7a3c1fc37a71)
+  Thanks [@dependabot](https://github.com/apps/dependabot)! - dependencies updates:
+  - Updated dependency
+    [`@graphql-mesh/transport-common@^1.0.16` ↗︎](https://www.npmjs.com/package/@graphql-mesh/transport-common/v/1.0.16)
+    (from `^1.0.15`, in `dependencies`)
+  - Updated dependency
+    [`@graphql-tools/delegate@^12.0.14` ↗︎](https://www.npmjs.com/package/@graphql-tools/delegate/v/12.0.14)
+    (from `^12.0.13`, in `dependencies`)
+- Updated dependencies
+  [[`8c7b764`](https://github.com/ardatan/graphql-mesh/commit/8c7b764dbd84356244f6e84dc36b7a3c1fc37a71),
+  [`8c7b764`](https://github.com/ardatan/graphql-mesh/commit/8c7b764dbd84356244f6e84dc36b7a3c1fc37a71),
+  [`8c7b764`](https://github.com/ardatan/graphql-mesh/commit/8c7b764dbd84356244f6e84dc36b7a3c1fc37a71),
+  [`e6a25d2`](https://github.com/ardatan/graphql-mesh/commit/e6a25d24937d91d2543b8801499bbfc3fc30e43b)]:
+  - @graphql-mesh/transport-rest@0.9.39
+  - @graphql-mesh/types@0.104.28
+  - @graphql-mesh/utils@0.104.36
+
 ## 0.109.39
 
 ### Patch Changes
