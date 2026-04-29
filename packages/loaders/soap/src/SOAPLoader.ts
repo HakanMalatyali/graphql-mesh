@@ -623,7 +623,36 @@ export class SOAPLoader {
               soapAnnotations.bodyAlias = this.bodyAlias;
             }
             if (this.soapHeaders) {
-              soapAnnotations.soapHeaders = this.soapHeaders;
+              let resolvedSoapHeaders = this.soapHeaders;
+              // Auto-detect header element namespace from WSDL binding when not provided
+              if (resolvedSoapHeaders.headers && !resolvedSoapHeaders.namespace) {
+                outerLoop: for (const h of bindingInput?.header ?? []) {
+                  const [msgNsAlias, msgName] = (h.attributes?.message ?? '').split(':');
+                  const msgNs =
+                    bindingAliasMap?.get(msgNsAlias) || serviceAndPortAliasMap.get(msgNsAlias);
+                  if (!msgNs) continue;
+                  const msgObj = this.getNamespaceMessageMap(msgNs).get(msgName);
+                  if (!msgObj) continue;
+                  const partAttrName = h.attributes?.part;
+                  const part = (msgObj.part ?? []).find(p => p.attributes?.name === partAttrName);
+                  if (!part?.attributes?.element) continue;
+                  const [elemNsAlias] = part.attributes.element.split(':');
+                  const msgAliasMapHdr = this.aliasMap?.get(msgObj);
+                  const elemNs =
+                    msgAliasMapHdr?.get(elemNsAlias) || bindingAliasMap?.get(elemNsAlias);
+                  if (!elemNs) continue;
+                  const nsAlias =
+                    [...serviceAndPortAliasMap.entries()].find(([, uri]) => uri === elemNs)?.[0] ??
+                    [...(bindingAliasMap?.entries() ?? [])].find(([, uri]) => uri === elemNs)?.[0];
+                  resolvedSoapHeaders = {
+                    ...resolvedSoapHeaders,
+                    namespace: elemNs,
+                    ...(nsAlias ? { alias: nsAlias } : {}),
+                  };
+                  break outerLoop;
+                }
+              }
+              soapAnnotations.soapHeaders = resolvedSoapHeaders;
             }
             rootTC.addFields({
               [operationFieldName]: {
