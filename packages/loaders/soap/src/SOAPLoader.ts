@@ -162,6 +162,14 @@ const soapDirective = new GraphQLDirective({
   },
 });
 
+const soapTypeDirective = new GraphQLDirective({
+  name: 'soapType',
+  locations: [DirectiveLocation.INPUT_OBJECT],
+  args: {
+    namespace: { type: GraphQLString },
+  },
+});
+
 const QUERY_PREFIXES = [
   'get',
   'find',
@@ -230,6 +238,7 @@ export class SOAPLoader {
     this.subgraphName = options.subgraphName;
     this.loadXMLSchemaNamespace();
     this.schemaComposer.addDirective(soapDirective);
+    this.schemaComposer.addDirective(soapTypeDirective);
     this.schemaHeadersFactory = getInterpolatedHeadersFactory(options.schemaHeaders || {});
     this.endpoint = options.endpoint;
     this.cwd = options.cwd;
@@ -1135,7 +1144,9 @@ export class SOAPLoader {
         complexTypeTC = this.schemaComposer.createInputTC({
           name: inputTypeName,
           fields: fieldMap,
+          extensions: { soapNamespace: complexTypeNamespace },
         });
+        complexTypeTC.setDirectiveByName('soapType', { namespace: complexTypeNamespace });
       }
       this.complexTypeInputTCMap.set(complexType, complexTypeTC);
     }
