@@ -401,6 +401,16 @@ export class SOAPLoader {
               elementObj.attributes.name,
               refComplexType,
             );
+            // Track element→type namespace so bindingNamespace can be resolved correctly
+            let elementRefs = this.namespaceElementRefMap.get(schemaNamespace);
+            if (!elementRefs) {
+              elementRefs = new Map();
+              this.namespaceElementRefMap.set(schemaNamespace, elementRefs);
+            }
+            elementRefs.set(elementObj.attributes.name, {
+              typeName: refTypeName,
+              typeNamespace: refTypeNamespace,
+            });
           }
           const refSimpleType = this.getNamespaceSimpleTypeMap(refTypeNamespace).get(refTypeName);
           if (refSimpleType) {
@@ -620,6 +630,27 @@ export class SOAPLoader {
 
               if (part.attributes.element) {
                 const [elementNamespaceAlias, elementName] = part.attributes.element.split(':');
+                // Resolve the correct bindingNamespace from the element's XSD type namespace.
+                // When the element is declared in the WSDL tns namespace but its type lives in
+                // a different XSD namespace, prefer the XSD namespace for correct XML prefixing.
+                if (soapAnnotations.bindingNamespace === bindingNamespace) {
+                  const resolvedNs =
+                    aliasMap?.get(elementNamespaceAlias) ||
+                    part.attributes[elementNamespaceAlias as keyof WSDLPartAttributes];
+                  if (resolvedNs) {
+                    const elementRef = this.namespaceElementRefMap.get(resolvedNs)?.get(elementName);
+                    let finalNs = elementRef ? elementRef.typeNamespace : resolvedNs;
+                    if (finalNs === definitionNamespace) {
+                      for (const [ns, typeMap] of this.namespaceComplexTypesMap) {
+                        if (ns !== finalNs && typeMap.has(elementName)) {
+                          finalNs = ns;
+                          break;
+                        }
+                      }
+                    }
+                    soapAnnotations.bindingNamespace = finalNs;
+                  }
+                }
                 rootTC.addFieldArgs(operationFieldName, {
                   [sanitizeNameForGraphQL(elementName)]: {
                     type: () => {
