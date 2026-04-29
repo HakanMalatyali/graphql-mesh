@@ -7,6 +7,8 @@ import {
   GraphQLFloat,
   GraphQLInputObjectType,
   GraphQLInt,
+  GraphQLList,
+  GraphQLNonNull,
   GraphQLString,
 } from 'graphql';
 import type {
@@ -118,6 +120,14 @@ const SOAPHeadersInput = new GraphQLInputObjectType({
   },
 });
 
+const NamespaceEntryInput = new GraphQLInputObjectType({
+  name: 'NamespaceEntry',
+  fields: {
+    alias: { type: new GraphQLNonNull(GraphQLString) },
+    uri: { type: new GraphQLNonNull(GraphQLString) },
+  },
+});
+
 const soapDirective = new GraphQLDirective({
   name: 'soap',
   locations: [DirectiveLocation.FIELD_DEFINITION],
@@ -145,6 +155,9 @@ const soapDirective = new GraphQLDirective({
     },
     soapNamespace: {
       type: GraphQLString,
+    },
+    namespaceMap: {
+      type: new GraphQLList(new GraphQLNonNull(NamespaceEntryInput)),
     },
   },
 });
@@ -555,12 +568,21 @@ export class SOAPLoader {
             const soapHeaderPartNames = new Set<string>(
               (bindingInput?.header ?? []).map((h: any) => h.attributes?.part).filter(Boolean),
             );
+            // Build namespace map from the WSDL definition's xmlns declarations
+            const namespaceMap: Record<string, string> = {};
+            for (const [alias, uri] of serviceAndPortAliasMap) {
+              if (alias && uri && typeof uri === 'string' && uri.startsWith('http')) {
+                namespaceMap[alias] = uri;
+              }
+            }
+
             const soapAnnotations: SoapAnnotations = {
               elementName,
               bindingNamespace,
               endpoint: this.endpoint,
               subgraph: this.subgraphName,
               soapNamespace: this.soapNamespace,
+              namespaceMap,
             };
             if (!soapAnnotations.endpoint && portObj.address) {
               for (const address of portObj.address) {

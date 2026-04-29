@@ -13,6 +13,7 @@ export interface SoapAnnotations {
     namespace: string;
     headers: unknown;
   };
+  namespaceMap?: Record<string, string>; // serialized as [{alias, uri}] in @soap directive
 }
 
 export const PARSE_XML_OPTIONS: Partial<X2jOptions> = {

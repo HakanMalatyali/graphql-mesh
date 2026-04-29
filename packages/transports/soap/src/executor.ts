@@ -98,6 +98,7 @@ interface SoapAnnotations {
     headers: Record<string, string>;
   };
   soapAction?: string;
+  namespaceMap?: Array<{ alias: string; uri: string }>;
 }
 
 interface CreateRootValueMethodOpts {
@@ -164,8 +165,17 @@ Falling back to 'http://www.w3.org/2003/05/soap-envelope' as SOAP Namespace.`);
       env: process.env,
     };
 
-    const bodyPrefix = soapAnnotations.bodyAlias || 'body';
-    envelopeAttributes[`xmlns:${bodyPrefix}`] = soapAnnotations.bindingNamespace;
+    // Declare all known namespaces on the envelope from namespaceMap when available,
+    // otherwise fall back to a single bodyPrefix alias for the binding namespace.
+    if (soapAnnotations.namespaceMap?.length) {
+      for (const { alias, uri } of soapAnnotations.namespaceMap) {
+        const k = `xmlns:${alias}`;
+        if (!envelopeAttributes[k]) envelopeAttributes[k] = uri;
+      }
+    } else {
+      const bodyPrefix = soapAnnotations.bodyAlias || 'body';
+      envelopeAttributes[`xmlns:${bodyPrefix}`] = soapAnnotations.bindingNamespace;
+    }
 
     const headerPrefix =
       soapAnnotations.soapHeaders?.alias || soapAnnotations.bodyAlias || 'header';
@@ -184,6 +194,7 @@ Falling back to 'http://www.w3.org/2003/05/soap-envelope' as SOAP Namespace.`);
       }
     }
 
+    const bodyPrefix = soapAnnotations.bodyAlias || 'body';
     const body = prefixWithAlias({
       alias: bodyPrefix,
       obj: normalizeArgsForConverter(args),
