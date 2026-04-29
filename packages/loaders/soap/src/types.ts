@@ -217,15 +217,27 @@ export interface WSDLInputAttributes {
 
 export interface SOAPBodyAttributes {
   use: string;
+  parts?: string;
 }
 
 export interface SOAPBody {
   attributes: SOAPBodyAttributes;
 }
 
+export interface SOAPHeaderAttributes {
+  message: string;
+  part: string;
+  use: string;
+}
+
+export interface SOAPHeader {
+  attributes: SOAPHeaderAttributes;
+}
+
 export interface WSDLInput {
   attributes: WSDLInputAttributes;
   body: SOAPBody[];
+  header?: SOAPHeader[];
 }
 
 export interface WSDLOutputAttributes {
@@ -236,6 +248,7 @@ export interface WSDLOutputAttributes {
 export interface WSDLOutput {
   attributes: WSDLOutputAttributes;
   body: SOAPBody[];
+  header?: SOAPHeader[];
 }
 
 export interface WSDLFaultAttributes {
