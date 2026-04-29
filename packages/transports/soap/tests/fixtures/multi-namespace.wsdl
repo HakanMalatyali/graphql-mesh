@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://schemas.xmlsoap.org/wsdl/"
+             xmlns:soap="http://schemas.xmlsoap.org/wsdl/soap/"
+             xmlns:tns="http://example.com/service"
+             xmlns:types="http://example.com/types"
+             xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+             targetNamespace="http://example.com/service"
+             name="MultiNsService">
+
+  <types>
+    <xsd:schema targetNamespace="http://example.com/types">
+      <xsd:complexType name="DataRequest">
+        <xsd:sequence>
+          <xsd:element name="id" type="xsd:string"/>
+        </xsd:sequence>
+      </xsd:complexType>
+      <xsd:complexType name="DataResponse">
+        <xsd:sequence>
+          <xsd:element name="result" type="xsd:string"/>
+        </xsd:sequence>
+      </xsd:complexType>
+    </xsd:schema>
+    <xsd:schema targetNamespace="http://example.com/service">
+      <xsd:element name="GetData" type="types:DataRequest"/>
+      <xsd:element name="GetDataResponse" type="types:DataResponse"/>
+    </xsd:schema>
+  </types>
+
+  <message name="GetDataSoapIn">
+    <part name="parameters" element="tns:GetData"/>
+  </message>
+  <message name="GetDataSoapOut">
+    <part name="parameters" element="tns:GetDataResponse"/>
+  </message>
+
+  <portType name="MultiNsPortType">
+    <operation name="GetData">
+      <input message="tns:GetDataSoapIn"/>
+      <output message="tns:GetDataSoapOut"/>
+    </operation>
+  </portType>
+
+  <binding name="MultiNsBinding" type="tns:MultiNsPortType">
+    <soap:binding style="document" transport="http://schemas.xmlsoap.org/soap/http"/>
+    <operation name="GetData">
+      <soap:operation soapAction="http://example.com/service/GetData"/>
+      <input>
+        <soap:body use="literal"/>
+      </input>
+      <output>
+        <soap:body use="literal"/>
+      </output>
+    </operation>
+  </binding>
+
+  <service name="MultiNsService">
+    <port name="MultiNsPort" binding="tns:MultiNsBinding">
+      <soap:address location="http://example.com/service"/>
+    </port>
+  </service>
+</definitions>
