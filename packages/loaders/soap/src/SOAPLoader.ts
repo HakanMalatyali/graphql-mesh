@@ -88,7 +88,7 @@ export interface SOAPHeaders {
    *
    * @example http://www.example.com/namespace
    */
-  namespace: string;
+  namespace?: string;
   /**
    * The name of the alias to be used in the envelope
    *
