@@ -50,8 +50,10 @@ import {
 } from '@graphql-mesh/utils';
 import { fetch as defaultFetchFn } from '@whatwg-node/fetch';
 import type {
+  SOAPHeader,
   WSDLBinding,
   WSDLDefinition,
+  WSDLInput,
   WSDLMessage,
   WSDLObject,
   WSDLPartAttributes,
@@ -86,7 +88,7 @@ export interface SOAPHeaders {
    *
    * @example http://www.example.com/namespace
    */
-  namespace: string;
+  namespace?: string;
   /**
    * The name of the alias to be used in the envelope
    *
@@ -535,6 +537,16 @@ export class SOAPLoader {
             const bindingOperationObject = bindingObj.operation.find(
               operation => operation.attributes.name === operationName,
             );
+            // Determine which message parts belong to soap:header vs soap:body
+            const bindingInput = bindingOperationObject?.input?.[0];
+            const soapBodyPartNames = new Set<string>(
+              (bindingInput?.body?.[0]?.attributes?.parts ?? '')
+                .split(' ')
+                .filter(Boolean),
+            );
+            const soapHeaderPartNames = new Set<string>(
+              (bindingInput?.header ?? []).map((h: SOAPHeader) => h.attributes?.part).filter(Boolean),
+            );
             const soapAnnotations: SoapAnnotations = {
               elementName,
               bindingNamespace,
@@ -572,7 +584,18 @@ export class SOAPLoader {
               soapAnnotations.bodyAlias = this.bodyAlias;
             }
             if (this.soapHeaders) {
-              soapAnnotations.soapHeaders = this.soapHeaders;
+              let resolvedSoapHeaders = this.soapHeaders;
+              if (resolvedSoapHeaders.headers && !resolvedSoapHeaders.namespace) {
+                const detected = this.resolveHeaderNamespace(
+                  bindingInput,
+                  bindingAliasMap,
+                  serviceAndPortAliasMap,
+                );
+                if (detected) {
+                  resolvedSoapHeaders = { ...resolvedSoapHeaders, ...detected };
+                }
+              }
+              soapAnnotations.soapHeaders = resolvedSoapHeaders;
             }
             rootTC.addFields({
               [operationFieldName]: {
@@ -601,6 +624,10 @@ export class SOAPLoader {
             }
             const aliasMap = this.aliasMap.get(inputMessageObj);
             for (const part of inputMessageObj.part) {
+              const partName = part.attributes.name;
+              if (soapHeaderPartNames.has(partName)) continue;
+              if (soapBodyPartNames.size > 0 && !soapBodyPartNames.has(partName)) continue;
+
               if (part.attributes.element) {
                 const [elementNamespaceAlias, elementName] = part.attributes.element.split(':');
                 rootTC.addFieldArgs(operationFieldName, {
@@ -623,7 +650,6 @@ export class SOAPLoader {
                   },
                 });
               } else if (part.attributes.name) {
-                const partName = part.attributes.name;
                 rootTC.addFieldArgs(operationFieldName, {
                   [sanitizeNameForGraphQL(partName)]: {
                     type: () => {
@@ -710,6 +736,36 @@ export class SOAPLoader {
       }
     }
     return aliasMap;
+  }
+
+  private resolveHeaderNamespace(
+    bindingInput: WSDLInput | undefined,
+    bindingAliasMap: Map<string, string>,
+    serviceAndPortAliasMap: Map<string, string>,
+  ): { namespace: string; alias?: string } | null {
+    for (const h of bindingInput?.header ?? []) {
+      const rawMsg = h.attributes?.message ?? '';
+      const colonIdx = rawMsg.indexOf(':');
+      if (colonIdx === -1) continue;
+      const msgNsAlias = rawMsg.slice(0, colonIdx);
+      const msgName = rawMsg.slice(colonIdx + 1);
+      const msgNs = bindingAliasMap.get(msgNsAlias) ?? serviceAndPortAliasMap.get(msgNsAlias);
+      if (!msgNs) continue;
+      const msgObj = this.getNamespaceMessageMap(msgNs).get(msgName);
+      if (!msgObj) continue;
+      const partAttrName = h.attributes?.part;
+      const part = (msgObj.part ?? []).find(p => p.attributes?.name === partAttrName);
+      if (!part?.attributes?.element) continue;
+      const [elemNsAlias] = part.attributes.element.split(':');
+      const msgAliasMapHdr = this.aliasMap?.get(msgObj);
+      const elemNs = msgAliasMapHdr?.get(elemNsAlias) ?? bindingAliasMap.get(elemNsAlias);
+      if (!elemNs) continue;
+      const nsAlias =
+        [...serviceAndPortAliasMap.entries()].find(([, uri]) => uri === elemNs)?.[0] ??
+        [...bindingAliasMap.entries()].find(([, uri]) => uri === elemNs)?.[0];
+      return { namespace: elemNs, ...(nsAlias ? { alias: nsAlias } : {}) };
+    }
+    return null;
   }
 
   getTypeForSimpleType(

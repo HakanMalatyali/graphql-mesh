@@ -68,4 +68,20 @@ describe('SOAP Loader', () => {
 
     expect(err).toBeUndefined();
   });
+
+  it('should exclude soap:header parts from body args', async () => {
+    const soapLoader = new SOAPLoader({ subgraphName: 'Test', fetch, logger });
+    const wsdl = await fsPromises.readFile(
+      join(__dirname, './fixtures/soap-header-body.wsdl'),
+      'utf8',
+    );
+    await soapLoader.loadWSDL(wsdl);
+    const schema = soapLoader.buildSchema();
+    const queryFields = schema.getQueryType()?.getFields() ?? {};
+    const getItemField = Object.values(queryFields).find(f => f.name.includes('GetItem'));
+    expect(getItemField).toBeDefined();
+    const argNames = getItemField!.args.map(a => a.name);
+    expect(argNames).toContain('GetItem');
+    expect(argNames).not.toContain('AuthToken');
+  });
 });
