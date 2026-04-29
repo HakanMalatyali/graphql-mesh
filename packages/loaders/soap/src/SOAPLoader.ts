@@ -7,6 +7,8 @@ import {
   GraphQLFloat,
   GraphQLInputObjectType,
   GraphQLInt,
+  GraphQLList,
+  GraphQLNonNull,
   GraphQLString,
 } from 'graphql';
 import type {
@@ -118,6 +120,14 @@ const SOAPHeadersInput = new GraphQLInputObjectType({
   },
 });
 
+const NamespaceEntryInput = new GraphQLInputObjectType({
+  name: 'NamespaceEntry',
+  fields: {
+    alias: { type: new GraphQLNonNull(GraphQLString) },
+    uri: { type: new GraphQLNonNull(GraphQLString) },
+  },
+});
+
 const soapDirective = new GraphQLDirective({
   name: 'soap',
   locations: [DirectiveLocation.FIELD_DEFINITION],
@@ -146,6 +156,17 @@ const soapDirective = new GraphQLDirective({
     soapNamespace: {
       type: GraphQLString,
     },
+    namespaceMap: {
+      type: new GraphQLList(new GraphQLNonNull(NamespaceEntryInput)),
+    },
+  },
+});
+
+const soapTypeDirective = new GraphQLDirective({
+  name: 'soapType',
+  locations: [DirectiveLocation.INPUT_OBJECT],
+  args: {
+    namespace: { type: GraphQLString },
   },
 });
 
@@ -217,6 +238,7 @@ export class SOAPLoader {
     this.subgraphName = options.subgraphName;
     this.loadXMLSchemaNamespace();
     this.schemaComposer.addDirective(soapDirective);
+    this.schemaComposer.addDirective(soapTypeDirective);
     this.schemaHeadersFactory = getInterpolatedHeadersFactory(options.schemaHeaders || {});
     this.endpoint = options.endpoint;
     this.cwd = options.cwd;
@@ -401,6 +423,16 @@ export class SOAPLoader {
               elementObj.attributes.name,
               refComplexType,
             );
+            // Track element→type namespace so bindingNamespace can be resolved correctly
+            let elementRefs = this.namespaceElementRefMap.get(schemaNamespace);
+            if (!elementRefs) {
+              elementRefs = new Map();
+              this.namespaceElementRefMap.set(schemaNamespace, elementRefs);
+            }
+            elementRefs.set(elementObj.attributes.name, {
+              typeName: refTypeName,
+              typeNamespace: refTypeNamespace,
+            });
           }
           const refSimpleType = this.getNamespaceSimpleTypeMap(refTypeNamespace).get(refTypeName);
           if (refSimpleType) {
@@ -535,12 +567,66 @@ export class SOAPLoader {
             const bindingOperationObject = bindingObj.operation.find(
               operation => operation.attributes.name === operationName,
             );
+            // Retrieve the input message object before building the @soap directive so we can
+            // resolve bindingNamespace from the element's XSD type namespace.
+            const inputObj = operationObj.input[0];
+            const [inputMessageNamespaceAlias, inputMessageName] =
+              inputObj.attributes.message.split(':');
+            const inputMessageNamespace = portTypeAliasMap.get(inputMessageNamespaceAlias);
+            if (!inputMessageNamespace) {
+              throw new Error(`Namespace alias: ${inputMessageNamespaceAlias} is undefined!`);
+            }
+            const inputMessageObj =
+              this.getNamespaceMessageMap(inputMessageNamespace).get(inputMessageName);
+            if (!inputMessageObj) {
+              throw new Error(
+                `Message: ${inputMessageName} is not defined in ${inputMessageNamespace} needed for ${portTypeName}->${operationName}`,
+              );
+            }
+            const aliasMap = this.aliasMap.get(inputMessageObj);
+
+            // Build namespace map from the WSDL definition's xmlns declarations
+            const namespaceMap: Record<string, string> = {};
+            for (const [alias, uri] of serviceAndPortAliasMap) {
+              if (alias && uri && typeof uri === 'string' && uri.includes(':')) {
+                namespaceMap[alias] = uri;
+              }
+            }
+
+            // Resolve bindingNamespace to the XSD type namespace for the first body part element.
+            // When the element lives in tns but its type is in a separate XSD namespace, that
+            // XSD namespace must prefix the body element.
+            let resolvedBindingNamespace = bindingNamespace;
+            for (const part of inputMessageObj.part) {
+              if (part.attributes.element && resolvedBindingNamespace === bindingNamespace) {
+                const [elementNamespaceAlias, elementName] = part.attributes.element.split(':');
+                const resolvedNs =
+                  aliasMap?.get(elementNamespaceAlias) ||
+                  part.attributes[elementNamespaceAlias as keyof WSDLPartAttributes];
+                if (resolvedNs) {
+                  const elementRef = this.namespaceElementRefMap.get(resolvedNs)?.get(elementName);
+                  let finalNs = elementRef ? elementRef.typeNamespace : resolvedNs;
+                  if (finalNs === definitionNamespace) {
+                    for (const [ns, typeMap] of this.namespaceComplexTypesMap) {
+                      if (ns !== finalNs && typeMap.has(elementName)) {
+                        finalNs = ns;
+                        break;
+                      }
+                    }
+                  }
+                  resolvedBindingNamespace = finalNs;
+                }
+                break;
+              }
+            }
+
             const soapAnnotations: SoapAnnotations = {
               elementName,
-              bindingNamespace,
+              bindingNamespace: resolvedBindingNamespace,
               endpoint: this.endpoint,
               subgraph: this.subgraphName,
               soapNamespace: this.soapNamespace,
+              namespaceMap,
             };
             if (!soapAnnotations.endpoint && portObj.address) {
               for (const address of portObj.address) {
@@ -580,26 +666,16 @@ export class SOAPLoader {
                 directives: [
                   {
                     name: 'soap',
-                    args: soapAnnotations,
+                    args: {
+                      ...soapAnnotations,
+                      namespaceMap: Object.entries(soapAnnotations.namespaceMap ?? {}).map(
+                        ([alias, uri]) => ({ alias, uri }),
+                      ),
+                    },
                   },
                 ],
               },
             });
-            const inputObj = operationObj.input[0];
-            const [inputMessageNamespaceAlias, inputMessageName] =
-              inputObj.attributes.message.split(':');
-            const inputMessageNamespace = portTypeAliasMap.get(inputMessageNamespaceAlias);
-            if (!inputMessageNamespace) {
-              throw new Error(`Namespace alias: ${inputMessageNamespaceAlias} is undefined!`);
-            }
-            const inputMessageObj =
-              this.getNamespaceMessageMap(inputMessageNamespace).get(inputMessageName);
-            if (!inputMessageObj) {
-              throw new Error(
-                `Message: ${inputMessageName} is not defined in ${inputMessageNamespace} needed for ${portTypeName}->${operationName}`,
-              );
-            }
-            const aliasMap = this.aliasMap.get(inputMessageObj);
             for (const part of inputMessageObj.part) {
               if (part.attributes.element) {
                 const [elementNamespaceAlias, elementName] = part.attributes.element.split(':');
@@ -607,7 +683,7 @@ export class SOAPLoader {
                   [sanitizeNameForGraphQL(elementName)]: {
                     type: () => {
                       const elementNamespace =
-                        aliasMap.get(elementNamespaceAlias) ||
+                        aliasMap?.get(elementNamespaceAlias) ||
                         part.attributes[elementNamespaceAlias as keyof WSDLPartAttributes];
                       if (!elementNamespace) {
                         throw new Error(
@@ -629,7 +705,7 @@ export class SOAPLoader {
                     type: () => {
                       const typeRef = part.attributes.type;
                       const [typeNamespaceAlias, typeName] = typeRef.split(':');
-                      const typeNamespace = aliasMap.get(typeNamespaceAlias);
+                      const typeNamespace = aliasMap?.get(typeNamespaceAlias);
                       if (!typeNamespace) {
                         throw new Error(`Namespace alias: ${typeNamespaceAlias} is undefined!`);
                       }
@@ -770,9 +846,8 @@ export class SOAPLoader {
     typeName: string;
     typeNamespace: string;
   }) {
-    // Check element aliases first — consistent with the eager path that overwrites the type map
     const elementRef = this.namespaceElementRefMap.get(typeNamespace)?.get(typeName);
-    if (elementRef) {
+    if (elementRef && elementRef.typeNamespace !== typeNamespace) {
       return this.getInputTypeForTypeNameInNamespace(elementRef);
     }
     const complexType = this.getNamespaceComplexTypeMap(typeNamespace)?.get(typeName);
@@ -1014,7 +1089,9 @@ export class SOAPLoader {
         complexTypeTC = this.schemaComposer.createInputTC({
           name: inputTypeName,
           fields: fieldMap,
+          extensions: { soapNamespace: complexTypeNamespace },
         });
+        complexTypeTC.setDirectiveByName('soapType', { namespace: complexTypeNamespace });
       }
       this.complexTypeInputTCMap.set(complexType, complexTypeTC);
     }
@@ -1281,9 +1358,8 @@ export class SOAPLoader {
     typeName: string;
     typeNamespace: string;
   }) {
-    // Check element aliases first — consistent with the eager path that overwrites the type map
     const elementRef = this.namespaceElementRefMap.get(typeNamespace)?.get(typeName);
-    if (elementRef) {
+    if (elementRef && elementRef.typeNamespace !== typeNamespace) {
       return this.getOutputTypeForTypeNameInNamespace(elementRef);
     }
     const complexType = this.getNamespaceComplexTypeMap(typeNamespace)?.get(typeName);
