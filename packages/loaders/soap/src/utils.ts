@@ -10,7 +10,7 @@ export interface SoapAnnotations {
   soapAction?: string;
   soapHeaders?: {
     alias?: string;
-    namespace: string;
+    namespace?: string;
     headers: unknown;
   };
   namespaceMap?: Record<string, string>; // serialized as [{alias, uri}] in @soap directive
