@@ -592,19 +592,40 @@ export class SOAPLoader {
               soapAnnotations.bodyAlias = this.bodyAlias;
             }
             if (this.soapHeaders) {
-              soapAnnotations.soapHeaders = this.soapHeaders;
+              let resolvedSoapHeaders = this.soapHeaders;
+              // Auto-detect header element namespace from WSDL binding when not provided
+              if (resolvedSoapHeaders.headers && !resolvedSoapHeaders.namespace) {
+                outerLoop: for (const h of bindingInput?.header ?? []) {
+                  const [msgNsAlias, msgName] = (h.attributes?.message ?? '').split(':');
+                  const msgNs =
+                    bindingAliasMap?.get(msgNsAlias) || serviceAndPortAliasMap.get(msgNsAlias);
+                  if (!msgNs) continue;
+                  const msgObj = this.getNamespaceMessageMap(msgNs).get(msgName);
+                  if (!msgObj) continue;
+                  const partAttrName = h.attributes?.part;
+                  const part = (msgObj.part ?? []).find(p => p.attributes?.name === partAttrName);
+                  if (!part?.attributes?.element) continue;
+                  const [elemNsAlias, elemLocalName] = part.attributes.element.split(':');
+                  const msgAliasMapHdr = this.aliasMap?.get(msgObj);
+                  const elemNs =
+                    msgAliasMapHdr?.get(elemNsAlias) || bindingAliasMap?.get(elemNsAlias);
+                  if (!elemNs) continue;
+                  const nsAlias =
+                    [...serviceAndPortAliasMap.entries()].find(([, uri]) => uri === elemNs)?.[0] ??
+                    [...(bindingAliasMap?.entries() ?? [])].find(([, uri]) => uri === elemNs)?.[0];
+                  resolvedSoapHeaders = {
+                    ...resolvedSoapHeaders,
+                    namespace: elemNs,
+                    ...(nsAlias ? { alias: nsAlias } : {}),
+                    ...(elemLocalName ? { headers: { [elemLocalName]: resolvedSoapHeaders.headers } } : {}),
+                  };
+                  break outerLoop;
+                }
+              }
+              soapAnnotations.soapHeaders = resolvedSoapHeaders;
             }
-            rootTC.addFields({
-              [operationFieldName]: {
-                type,
-                directives: [
-                  {
-                    name: 'soap',
-                    args: soapAnnotations,
-                  },
-                ],
-              },
-            });
+            // Pre-compute the correct bindingNamespace from the first body part BEFORE
+            // addFields, because ...soapAnnotations spread captures the value at call time.
             const inputObj = operationObj.input[0];
             const [inputMessageNamespaceAlias, inputMessageName] =
               inputObj.attributes.message.split(':');
@@ -622,17 +643,10 @@ export class SOAPLoader {
             const aliasMap = this.aliasMap.get(inputMessageObj);
             for (const part of inputMessageObj.part) {
               const partName = part.attributes.name;
-
-              // Skip parts that are bound to soap:header in the binding
               if (soapHeaderPartNames.has(partName)) continue;
-              // If soap:body explicitly lists parts, skip parts not in that list
               if (soapBodyPartNames.size > 0 && !soapBodyPartNames.has(partName)) continue;
-
               if (part.attributes.element) {
                 const [elementNamespaceAlias, elementName] = part.attributes.element.split(':');
-                // Resolve the correct bindingNamespace from the element's XSD type namespace.
-                // When the element is declared in the WSDL tns namespace but its type lives in
-                // a different XSD namespace, prefer the XSD namespace for correct XML prefixing.
                 if (soapAnnotations.bindingNamespace === bindingNamespace) {
                   const resolvedNs =
                     aliasMap?.get(elementNamespaceAlias) ||
@@ -651,6 +665,35 @@ export class SOAPLoader {
                     soapAnnotations.bindingNamespace = finalNs;
                   }
                 }
+              }
+              break; // only the first body part determines the binding namespace
+            }
+            rootTC.addFields({
+              [operationFieldName]: {
+                type,
+                directives: [
+                  {
+                    name: 'soap',
+                    args: {
+                      ...soapAnnotations,
+                      namespaceMap: soapAnnotations.namespaceMap
+                        ? Object.entries(soapAnnotations.namespaceMap).map(([alias, uri]) => ({ alias, uri }))
+                        : undefined,
+                    },
+                  },
+                ],
+              },
+            });
+            for (const part of inputMessageObj.part) {
+              const partName = part.attributes.name;
+
+              // Skip parts that are bound to soap:header in the binding
+              if (soapHeaderPartNames.has(partName)) continue;
+              // If soap:body explicitly lists parts, skip parts not in that list
+              if (soapBodyPartNames.size > 0 && !soapBodyPartNames.has(partName)) continue;
+
+              if (part.attributes.element) {
+                const [elementNamespaceAlias, elementName] = part.attributes.element.split(':');
                 rootTC.addFieldArgs(operationFieldName, {
                   [sanitizeNameForGraphQL(elementName)]: {
                     type: () => {
