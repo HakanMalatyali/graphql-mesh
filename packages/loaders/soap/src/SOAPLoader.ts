@@ -7,6 +7,8 @@ import {
   GraphQLFloat,
   GraphQLInputObjectType,
   GraphQLInt,
+  GraphQLList,
+  GraphQLNonNull,
   GraphQLString,
 } from 'graphql';
 import type {
@@ -86,7 +88,7 @@ export interface SOAPHeaders {
    *
    * @example http://www.example.com/namespace
    */
-  namespace: string;
+  namespace?: string;
   /**
    * The name of the alias to be used in the envelope
    *
@@ -118,6 +120,14 @@ const SOAPHeadersInput = new GraphQLInputObjectType({
   },
 });
 
+const NamespaceEntryInput = new GraphQLInputObjectType({
+  name: 'NamespaceEntry',
+  fields: {
+    alias: { type: new GraphQLNonNull(GraphQLString) },
+    uri: { type: new GraphQLNonNull(GraphQLString) },
+  },
+});
+
 const soapDirective = new GraphQLDirective({
   name: 'soap',
   locations: [DirectiveLocation.FIELD_DEFINITION],
@@ -146,6 +156,17 @@ const soapDirective = new GraphQLDirective({
     soapNamespace: {
       type: GraphQLString,
     },
+    namespaceMap: {
+      type: new GraphQLList(new GraphQLNonNull(NamespaceEntryInput)),
+    },
+  },
+});
+
+const soapTypeDirective = new GraphQLDirective({
+  name: 'soapType',
+  locations: [DirectiveLocation.INPUT_OBJECT],
+  args: {
+    namespace: { type: GraphQLString },
   },
 });
 
@@ -217,6 +238,7 @@ export class SOAPLoader {
     this.subgraphName = options.subgraphName;
     this.loadXMLSchemaNamespace();
     this.schemaComposer.addDirective(soapDirective);
+    this.schemaComposer.addDirective(soapTypeDirective);
     this.schemaHeadersFactory = getInterpolatedHeadersFactory(options.schemaHeaders || {});
     this.endpoint = options.endpoint;
     this.cwd = options.cwd;
@@ -555,12 +577,21 @@ export class SOAPLoader {
             const soapHeaderPartNames = new Set<string>(
               (bindingInput?.header ?? []).map((h: any) => h.attributes?.part).filter(Boolean),
             );
+            // Build namespace map from the WSDL definition's xmlns declarations
+            const namespaceMap: Record<string, string> = {};
+            for (const [alias, uri] of serviceAndPortAliasMap) {
+              if (alias && uri && typeof uri === 'string' && uri.startsWith('http')) {
+                namespaceMap[alias] = uri;
+              }
+            }
+
             const soapAnnotations: SoapAnnotations = {
               elementName,
               bindingNamespace,
               endpoint: this.endpoint,
               subgraph: this.subgraphName,
               soapNamespace: this.soapNamespace,
+              namespaceMap,
             };
             if (!soapAnnotations.endpoint && portObj.address) {
               for (const address of portObj.address) {
@@ -676,7 +707,7 @@ export class SOAPLoader {
                     name: 'soap',
                     args: {
                       ...soapAnnotations,
-                      namespaceMap: soapAnnotations.namespaceMap
+                      namespaceMap: soapAnnotations.namespaceMap && Object.keys(soapAnnotations.namespaceMap).length > 0
                         ? Object.entries(soapAnnotations.namespaceMap).map(([alias, uri]) => ({ alias, uri }))
                         : undefined,
                     },
@@ -1113,7 +1144,9 @@ export class SOAPLoader {
         complexTypeTC = this.schemaComposer.createInputTC({
           name: inputTypeName,
           fields: fieldMap,
+          extensions: { soapNamespace: complexTypeNamespace },
         });
+        complexTypeTC.setDirectiveByName('soapType', { namespace: complexTypeNamespace });
       }
       this.complexTypeInputTCMap.set(complexType, complexTypeTC);
     }
