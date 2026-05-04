@@ -4,7 +4,7 @@ import { globalAgent } from 'https';
 import { join } from 'path';
 import { parse } from 'graphql';
 import type { MeshFetch } from '@graphql-mesh/types';
-import { printSchemaWithDirectives } from '@graphql-tools/utils';
+import { getDirectiveExtensions, printSchemaWithDirectives } from '@graphql-tools/utils';
 import { fetch } from '@whatwg-node/fetch';
 import { dummyLogger as logger } from '../../../testing/dummyLogger';
 import { createExecutorFromSchemaAST, SOAPLoader } from '../src/index.js';
@@ -67,5 +67,36 @@ describe('SOAP Loader', () => {
     }
 
     expect(err).toBeUndefined();
+  });
+
+  it('should build correct schema with namespaceMap for multi-namespace WSDL', async () => {
+    const soapLoader = new SOAPLoader({ subgraphName: 'Test', fetch, logger });
+    const wsdl = await fsPromises.readFile(
+      join(__dirname, './fixtures/multi-namespace.wsdl'),
+      'utf8',
+    );
+    await soapLoader.loadWSDL(wsdl);
+    const schema = soapLoader.buildSchema();
+    const printed = printSchemaWithDirectives(schema);
+    expect(printed).toContain('namespaceMap');
+    expect(printed).toMatchSnapshot();
+  });
+
+  it('should resolve bindingNamespace to XSD type namespace for multi-namespace WSDL', async () => {
+    const soapLoader = new SOAPLoader({ subgraphName: 'Test', fetch, logger });
+    const wsdl = await fsPromises.readFile(
+      join(__dirname, './fixtures/multi-namespace.wsdl'),
+      'utf8',
+    );
+    await soapLoader.loadWSDL(wsdl);
+    const schema = soapLoader.buildSchema();
+    const queryFields = schema.getQueryType()?.getFields() ?? {};
+    const mutationFields = schema.getMutationType()?.getFields() ?? {};
+    const allFields = { ...queryFields, ...mutationFields };
+    const getDataField = Object.values(allFields).find(f => f.name.includes('GetData'));
+    expect(getDataField).toBeDefined();
+    const directives = getDirectiveExtensions<{ soap: { bindingNamespace: string } }>(getDataField);
+    const soapDirective = directives?.soap?.[0];
+    expect(soapDirective?.bindingNamespace).toBe('http://example.com/types');
   });
 });

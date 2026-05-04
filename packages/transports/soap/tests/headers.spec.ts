@@ -7,6 +7,41 @@ import { createExecutorFromSchemaAST, SOAPLoader } from '@omnigraph/soap';
 import { fetch, Response } from '@whatwg-node/fetch';
 import { dummyLogger as logger } from '../../../testing/dummyLogger';
 
+describe('SOAP multi-namespace', () => {
+  it('should use per-namespace prefixes in the request body', async () => {
+    const soapLoader = new SOAPLoader({ subgraphName: 'Test', fetch, logger });
+    await soapLoader.loadWSDL(
+      readFileSync(join(__dirname, './fixtures/multi-namespace.wsdl'), 'utf-8'),
+    );
+    const schema = soapLoader.buildSchema();
+    const responseXml = `
+      <soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+        <soap:Body>
+          <GetDataResponse><result>ok</result></GetDataResponse>
+        </soap:Body>
+      </soap:Envelope>
+    `;
+    const fetchSpy = jest.fn(
+      (_url: string, _init: RequestInit) =>
+        new Response(responseXml, { status: 200, headers: { 'Content-Type': 'text/xml' } }),
+    );
+    const executor = createExecutorFromSchemaAST(schema, fetchSpy as unknown as MeshFetch);
+    await executor({
+      document: parse(/* GraphQL */ `
+        {
+          MultiNsService_MultiNsService_MultiNsPort_GetData(GetData: { id: "test-id" }) {
+            result
+          }
+        }
+      `),
+    });
+    const body: string = fetchSpy.mock.calls[0][1].body;
+    expect(body).toContain('types:GetData');
+    expect(body).not.toContain('tns:GetData');
+    expect(body).toMatchSnapshot('multi-namespace-body');
+  });
+});
+
 describe('SOAP Headers', () => {
   it('should pass headers to the executor', async () => {
     const soapLoader = new SOAPLoader({
@@ -47,32 +82,8 @@ describe('SOAP Headers', () => {
         PASSWORD: 'password',
       },
     });
-    expect(fetchSpy.mock.calls[0][1].body).toBe(
-      `
-<soap:Envelope xmlns:soap="http://www.w3.org/2003/05/soap-envelope" xmlns:guild="https://the-guild.dev">${`
- <soap:Header>
-    <guild:MyHeader>
-      <guild:UserName>
-        user
-      </guild:UserName>
-      <guild:Password>
-        password
-      </guild:Password>
-    </guild:MyHeader>
-  </soap:Header>
-  <soap:Body>
-    <guild:GetWeather>
-      <guild:CityName>
-        Rome
-      </guild:CityName>
-      <guild:CountryName>
-        Italy
-      </guild:CountryName>
-    </guild:GetWeather>
-  </soap:Body>`
-        .trim()
-        .replace(/\n\s+/g, '')}</soap:Envelope>
-    `.trim(),
-    );
+    // namespaceMap now declares all WSDL xmlns prefixes on the envelope; body uses the WSDL
+    // binding namespace alias (tns) while headers retain the user-supplied guild alias.
+    expect(fetchSpy.mock.calls[0][1].body).toMatchSnapshot('soap-headers-body');
   });
 });

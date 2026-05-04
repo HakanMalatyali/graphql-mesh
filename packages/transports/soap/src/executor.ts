@@ -1,11 +1,13 @@
 import { XMLBuilder as JSONToXMLConverter, XMLParser } from 'fast-xml-parser';
 import type {
   GraphQLFieldResolver,
+  GraphQLInputObjectType,
   GraphQLOutputType,
   GraphQLResolveInfo,
   GraphQLSchema,
+  StringValueNode,
 } from 'graphql';
-import { isListType, isNonNullType } from 'graphql';
+import { getNamedType, isInputObjectType, isListType, isNonNullType, isObjectType } from 'graphql';
 import { process } from '@graphql-mesh/cross-helpers';
 import type { ResolverData, ResolverDataBasedFactory } from '@graphql-mesh/string-interpolation';
 import {
@@ -41,16 +43,15 @@ const defaultFieldResolver: GraphQLFieldResolver<any, any> = function soapDefaul
   if (typeof rootField === 'function') {
     return rootField(args, context, info);
   }
-  const fieldValue = rootField;
-  const isArray = Array.isArray(fieldValue);
+  const isArray = Array.isArray(rootField);
   const isPlural = isOriginallyListType(info.returnType);
   if (isPlural && !isArray) {
-    return [fieldValue];
+    return [rootField];
   }
   if (!isPlural && isArray) {
-    return fieldValue[0];
+    return rootField[0];
   }
-  return fieldValue;
+  return rootField;
 };
 
 function normalizeArgsForConverter(args: any): any {
@@ -94,10 +95,11 @@ interface SoapAnnotations {
   bodyAlias?: string;
   soapHeaders?: {
     alias?: string;
-    namespace: string;
+    namespace?: string;
     headers: Record<string, string>;
   };
   soapAction?: string;
+  namespaceMap?: Array<{ alias: string; uri: string }>;
 }
 
 interface CreateRootValueMethodOpts {
@@ -107,6 +109,7 @@ interface CreateRootValueMethodOpts {
   xmlToJSONConverter: XMLParser;
   operationHeadersFactory: ResolverDataBasedFactory<Record<string, string>>;
   logger: Logger;
+  schema: GraphQLSchema;
 }
 
 function prefixWithAlias({
@@ -136,6 +139,97 @@ function prefixWithAlias({
   return obj;
 }
 
+function ensureUriAlias(uri: string, uriToAlias: Map<string, string>): string {
+  let alias = uriToAlias.get(uri);
+  if (!alias) {
+    alias = uri
+      .replace(/^https?:\/\//, '')
+      .replace(/[^a-zA-Z0-9]+/g, '_')
+      .replace(/^_+|_+$/g, '');
+    uriToAlias.set(uri, alias);
+  }
+  return alias;
+}
+
+function buildNamespacedValue(
+  value: any,
+  currentType: GraphQLInputObjectType | null,
+  schema: GraphQLSchema,
+  uriToAlias: Map<string, string>,
+  resolverData: ResolverData,
+  defaultAlias: string = '',
+): any {
+  if (value == null) return value;
+
+  if (typeof value !== 'object') {
+    const strVal =
+      typeof value === 'string' ? stringInterpolator.parse(value, resolverData) : value;
+    return { innerText: strVal };
+  }
+
+  if (Array.isArray(value)) {
+    return value.map(item =>
+      buildNamespacedValue(item, currentType, schema, uriToAlias, resolverData, defaultAlias),
+    );
+  }
+
+  const fields = currentType ? currentType.getFields() : null;
+  const result: Record<string, any> = {};
+
+  for (const key of Object.keys(value) as string[]) {
+    if (key === 'innerText') {
+      result[key] = value[key];
+      continue;
+    }
+
+    let fieldAlias = '';
+    let childType: GraphQLInputObjectType | null = null;
+
+    if (fields && fields[key]) {
+      const namedType = getNamedType(fields[key].type);
+
+      if (namedType?.name) {
+        const ns: string | undefined = (namedType.extensions as any)?.soapNamespace;
+        if (ns) {
+          fieldAlias = ensureUriAlias(ns, uriToAlias);
+        }
+        const resolved = schema.getType(namedType.name);
+        if (resolved && isInputObjectType(resolved)) {
+          childType = resolved;
+          // @soapType directive survives SDL round-trip; use it when extensions are lost
+          if (!fieldAlias) {
+            const soapTypeDir = resolved.astNode?.directives?.find(
+              d => d.name.value === 'soapType',
+            );
+            const dirNsArg = soapTypeDir?.arguments?.find(a => a.name.value === 'namespace');
+            const dirNs = (dirNsArg?.value as StringValueNode | undefined)?.value;
+            if (dirNs) {
+              fieldAlias = ensureUriAlias(dirNs, uriToAlias);
+            }
+          }
+        }
+      }
+    }
+
+    // Fall back to the parent's namespace alias when no type-level namespace is found
+    if (!fieldAlias) fieldAlias = defaultAlias;
+
+    // Element namespace = declaration namespace (defaultAlias = parent's namespace).
+    // Type namespace (fieldAlias) propagates as the new defaultAlias for children.
+    const prefixedKey = defaultAlias ? `${defaultAlias}:${key}` : key;
+    result[prefixedKey] = buildNamespacedValue(
+      value[key],
+      childType,
+      schema,
+      uriToAlias,
+      resolverData,
+      fieldAlias,
+    );
+  }
+
+  return result;
+}
+
 function createRootValueMethod({
   soapAnnotations,
   fetchFn,
@@ -143,6 +237,7 @@ function createRootValueMethod({
   xmlToJSONConverter,
   operationHeadersFactory,
   logger,
+  schema,
 }: CreateRootValueMethodOpts): RootValueMethod {
   if (!soapAnnotations.soapNamespace) {
     logger.warn(`The expected 'soapNamespace' attribute is missing in SOAP directive definition.
@@ -164,8 +259,25 @@ Falling back to 'http://www.w3.org/2003/05/soap-envelope' as SOAP Namespace.`);
       env: process.env,
     };
 
-    const bodyPrefix = soapAnnotations.bodyAlias || 'body';
-    envelopeAttributes[`xmlns:${bodyPrefix}`] = soapAnnotations.bindingNamespace;
+    const uriToAlias = new Map<string, string>(
+      (soapAnnotations.namespaceMap ?? []).map(({ alias, uri }) => [uri, alias]),
+    );
+    const bindingAlias =
+      soapAnnotations.namespaceMap?.length && soapAnnotations.bindingNamespace
+        ? (uriToAlias.get(soapAnnotations.bindingNamespace) ?? '')
+        : '';
+
+    // Declare all known namespaces on the envelope from namespaceMap when available,
+    // otherwise fall back to a single bodyPrefix alias for the binding namespace.
+    if (soapAnnotations.namespaceMap?.length) {
+      for (const { alias, uri } of soapAnnotations.namespaceMap) {
+        const k = `xmlns:${alias}`;
+        if (!envelopeAttributes[k]) envelopeAttributes[k] = uri;
+      }
+    } else {
+      const bodyPrefix = soapAnnotations.bodyAlias || 'body';
+      envelopeAttributes[`xmlns:${bodyPrefix}`] = soapAnnotations.bindingNamespace;
+    }
 
     const headerPrefix =
       soapAnnotations.soapHeaders?.alias || soapAnnotations.bodyAlias || 'header';
@@ -184,12 +296,37 @@ Falling back to 'http://www.w3.org/2003/05/soap-envelope' as SOAP Namespace.`);
       }
     }
 
-    const body = prefixWithAlias({
-      alias: bodyPrefix,
-      obj: normalizeArgsForConverter(args),
-      resolverData,
-    });
-    envelope['soap:Body'] = body;
+    const fieldDef = isObjectType(info.parentType)
+      ? info.parentType.getFields()[info.fieldName]
+      : undefined;
+    const argDefs = fieldDef?.args ?? [];
+    const bodyObj: Record<string, any> = {};
+    for (const argDef of argDefs) {
+      const argName: string = argDef.name;
+      if (!(argName in args)) continue;
+      const namedArgType = getNamedType(argDef.type);
+      let argInputType: GraphQLInputObjectType | null = null;
+      if (namedArgType?.name) {
+        const resolved = schema.getType(namedArgType.name);
+        if (resolved && isInputObjectType(resolved)) {
+          argInputType = resolved;
+        }
+      }
+      const prefixedArgName = bindingAlias ? `${bindingAlias}:${argName}` : argName;
+      bodyObj[prefixedArgName] = buildNamespacedValue(
+        args[argName],
+        argInputType,
+        schema,
+        uriToAlias,
+        resolverData,
+        bindingAlias,
+      );
+    }
+    for (const [uri, alias] of uriToAlias) {
+      const xmlnsKey = `xmlns:${alias}`;
+      if (!envelopeAttributes[xmlnsKey]) envelopeAttributes[xmlnsKey] = uri;
+    }
+    envelope['soap:Body'] = bodyObj;
 
     const requestJson = {
       'soap:Envelope': envelope,
@@ -239,7 +376,15 @@ Falling back to 'http://www.w3.org/2003/05/soap-envelope' as SOAP Namespace.`);
     }
     try {
       const responseJSON = xmlToJSONConverter.parse(responseXML, parseXmlOptions);
-      return normalizeResult(responseJSON.Envelope[0].Body[0][soapAnnotations.elementName]);
+      const envelope = responseJSON?.Envelope?.[0];
+      const body = envelope?.Body?.[0];
+      const result = body?.[soapAnnotations.elementName];
+      if (result === undefined) {
+        throw new Error(
+          `Response body does not contain expected element '${soapAnnotations.elementName}'`,
+        );
+      }
+      return normalizeResult(result);
     } catch (e) {
       return createGraphQLError(`Invalid SOAP response: ${e.message}`, {
         extensions: {
@@ -300,6 +445,7 @@ function createRootValue(
           xmlToJSONConverter,
           operationHeadersFactory,
           logger,
+          schema,
         });
       }
     }
