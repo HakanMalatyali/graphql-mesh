@@ -535,6 +535,16 @@ export class SOAPLoader {
             const bindingOperationObject = bindingObj.operation.find(
               operation => operation.attributes.name === operationName,
             );
+            // Determine which message parts belong to soap:header vs soap:body
+            const bindingInput = bindingOperationObject?.input?.[0];
+            const soapBodyPartNames = new Set<string>(
+              (bindingInput?.body?.[0]?.attributes?.parts ?? '')
+                .split(' ')
+                .filter(Boolean),
+            );
+            const soapHeaderPartNames = new Set<string>(
+              (bindingInput?.header ?? []).map((h: any) => h.attributes?.part).filter(Boolean),
+            );
             const soapAnnotations: SoapAnnotations = {
               elementName,
               bindingNamespace,
@@ -601,13 +611,20 @@ export class SOAPLoader {
             }
             const aliasMap = this.aliasMap.get(inputMessageObj);
             for (const part of inputMessageObj.part) {
+              const partName = part.attributes.name;
+
+              // Skip parts that are bound to soap:header in the binding
+              if (soapHeaderPartNames.has(partName)) continue;
+              // If soap:body explicitly lists parts, skip parts not in that list
+              if (soapBodyPartNames.size > 0 && !soapBodyPartNames.has(partName)) continue;
+
               if (part.attributes.element) {
                 const [elementNamespaceAlias, elementName] = part.attributes.element.split(':');
                 rootTC.addFieldArgs(operationFieldName, {
                   [sanitizeNameForGraphQL(elementName)]: {
                     type: () => {
                       const elementNamespace =
-                        aliasMap.get(elementNamespaceAlias) ||
+                        aliasMap?.get(elementNamespaceAlias) ||
                         part.attributes[elementNamespaceAlias as keyof WSDLPartAttributes];
                       if (!elementNamespace) {
                         throw new Error(
@@ -623,13 +640,12 @@ export class SOAPLoader {
                   },
                 });
               } else if (part.attributes.name) {
-                const partName = part.attributes.name;
                 rootTC.addFieldArgs(operationFieldName, {
                   [sanitizeNameForGraphQL(partName)]: {
                     type: () => {
                       const typeRef = part.attributes.type;
                       const [typeNamespaceAlias, typeName] = typeRef.split(':');
-                      const typeNamespace = aliasMap.get(typeNamespaceAlias);
+                      const typeNamespace = aliasMap?.get(typeNamespaceAlias);
                       if (!typeNamespace) {
                         throw new Error(`Namespace alias: ${typeNamespaceAlias} is undefined!`);
                       }

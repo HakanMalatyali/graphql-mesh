@@ -68,4 +68,28 @@ describe('SOAP Loader', () => {
 
     expect(err).toBeUndefined();
   });
+
+  it('should exclude soap:header parts from field arguments', async () => {
+    const soapLoader = new SOAPLoader({
+      subgraphName: 'AuthService',
+      fetch,
+      logger,
+    });
+    const wsdl = await fsPromises.readFile(
+      join(__dirname, './fixtures/header-body-parts.wsdl'),
+      'utf8',
+    );
+    await soapLoader.loadWSDL(wsdl);
+    const schema = soapLoader.buildSchema();
+    const mutation = schema.getMutationType();
+    const field = mutation?.getFields()['AuthService_AuthService_AuthServicePort_SendMessage'];
+
+    expect(field).toBeDefined();
+
+    const argNames = (field?.args ?? []).map(a => a.name);
+    // The body part element (SendMessage) must be present as an argument
+    expect(argNames).toContain('SendMessage');
+    // The header part element (AuthToken) must NOT appear as a body argument
+    expect(argNames).not.toContain('AuthToken');
+  });
 });

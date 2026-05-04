@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Fixture for testing that soap:header parts are excluded from body arguments.
+  The input message has two parts:
+    - authToken (bound to soap:header in the binding)
+    - parameters (bound to soap:body)
+  Only the parameters part should appear as a GraphQL field argument.
+-->
+<definitions xmlns="http://schemas.xmlsoap.org/wsdl/"
+             xmlns:xs="http://www.w3.org/2001/XMLSchema"
+             xmlns:soap="http://schemas.xmlsoap.org/wsdl/soap/"
+             xmlns:tns="http://example.com/auth-service"
+             name="AuthService"
+             targetNamespace="http://example.com/auth-service">
+  <types>
+    <xs:schema elementFormDefault="qualified" targetNamespace="http://example.com/auth-service">
+      <xs:element name="AuthToken">
+        <xs:complexType>
+          <xs:sequence>
+            <xs:element name="Token" type="xs:string"/>
+          </xs:sequence>
+        </xs:complexType>
+      </xs:element>
+      <xs:element name="SendMessage">
+        <xs:complexType>
+          <xs:sequence>
+            <xs:element name="Text" type="xs:string"/>
+          </xs:sequence>
+        </xs:complexType>
+      </xs:element>
+      <xs:element name="SendMessageResponse">
+        <xs:complexType>
+          <xs:sequence>
+            <xs:element name="MessageId" type="xs:string"/>
+          </xs:sequence>
+        </xs:complexType>
+      </xs:element>
+    </xs:schema>
+  </types>
+
+  <!-- Input message contains BOTH header part (authToken) and body part (parameters) -->
+  <message name="SendMessageInput">
+    <part name="authToken" element="tns:AuthToken"/>
+    <part name="parameters" element="tns:SendMessage"/>
+  </message>
+  <message name="SendMessageOutput">
+    <part name="parameters" element="tns:SendMessageResponse"/>
+  </message>
+
+  <portType name="AuthServicePort">
+    <operation name="SendMessage">
+      <input message="tns:SendMessageInput"/>
+      <output message="tns:SendMessageOutput"/>
+    </operation>
+  </portType>
+
+  <binding name="AuthServiceBinding" type="tns:AuthServicePort">
+    <soap:binding style="document" transport="http://schemas.xmlsoap.org/soap/http"/>
+    <operation name="SendMessage">
+      <soap:operation soapAction="http://example.com/auth-service/SendMessage"/>
+      <input>
+        <!-- authToken goes to soap:header — must NOT appear as a body arg -->
+        <soap:header message="tns:SendMessageInput" part="authToken" use="literal"/>
+        <!-- parameters goes to soap:body -->
+        <soap:body use="literal" parts="parameters"/>
+      </input>
+      <output>
+        <soap:body use="literal"/>
+      </output>
+    </operation>
+  </binding>
+
+  <service name="AuthService">
+    <port name="AuthServicePort" binding="tns:AuthServiceBinding">
+      <soap:address location="http://example.com/auth-service"/>
+    </port>
+  </service>
+</definitions>
