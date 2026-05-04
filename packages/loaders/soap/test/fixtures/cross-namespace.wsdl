@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Fixture for testing that bindingNamespace is resolved from the XSD element's target
+  namespace rather than the WSDL's own targetNamespace.
+
+  The WSDL targetNamespace is http://example.com/service (tns).
+  The XSD schema lives in a separate namespace http://example.com/types (ns2).
+  The input message part element is ns2:GetData, so bindingNamespace must be
+  http://example.com/types — NOT http://example.com/service.
+-->
+<definitions xmlns="http://schemas.xmlsoap.org/wsdl/"
+             xmlns:xs="http://www.w3.org/2001/XMLSchema"
+             xmlns:soap="http://schemas.xmlsoap.org/wsdl/soap/"
+             xmlns:tns="http://example.com/service"
+             xmlns:ns2="http://example.com/types"
+             name="TypesService"
+             targetNamespace="http://example.com/service">
+  <types>
+    <!-- XSD lives in a DIFFERENT namespace than the WSDL targetNamespace -->
+    <xs:schema elementFormDefault="qualified" targetNamespace="http://example.com/types">
+      <xs:element name="GetData">
+        <xs:complexType>
+          <xs:sequence>
+            <xs:element name="Id" type="xs:string"/>
+          </xs:sequence>
+        </xs:complexType>
+      </xs:element>
+      <xs:element name="GetDataResponse">
+        <xs:complexType>
+          <xs:sequence>
+            <xs:element name="Result" type="xs:string"/>
+          </xs:sequence>
+        </xs:complexType>
+      </xs:element>
+    </xs:schema>
+  </types>
+
+  <!-- Part element uses the ns2 prefix pointing to the types namespace -->
+  <message name="GetDataRequest">
+    <part name="parameters" element="ns2:GetData"/>
+  </message>
+  <message name="GetDataResponse">
+    <part name="parameters" element="ns2:GetDataResponse"/>
+  </message>
+
+  <portType name="TypesServicePort">
+    <operation name="GetData">
+      <input message="tns:GetDataRequest"/>
+      <output message="tns:GetDataResponse"/>
+    </operation>
+  </portType>
+
+  <binding name="TypesServiceBinding" type="tns:TypesServicePort">
+    <soap:binding style="document" transport="http://schemas.xmlsoap.org/soap/http"/>
+    <operation name="GetData">
+      <soap:operation soapAction=""/>
+      <input>
+        <soap:body use="literal"/>
+      </input>
+      <output>
+        <soap:body use="literal"/>
+      </output>
+    </operation>
+  </binding>
+
+  <service name="TypesService">
+    <port name="TypesServicePort" binding="tns:TypesServiceBinding">
+      <soap:address location="http://example.com/service"/>
+    </port>
+  </service>
+</definitions>

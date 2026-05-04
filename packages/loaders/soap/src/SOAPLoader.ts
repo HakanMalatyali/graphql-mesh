@@ -401,6 +401,16 @@ export class SOAPLoader {
               elementObj.attributes.name,
               refComplexType,
             );
+            // Track element→type namespace so bindingNamespace can be resolved correctly
+            let elementRefs = this.namespaceElementRefMap.get(schemaNamespace);
+            if (!elementRefs) {
+              elementRefs = new Map();
+              this.namespaceElementRefMap.set(schemaNamespace, elementRefs);
+            }
+            elementRefs.set(elementObj.attributes.name, {
+              typeName: refTypeName,
+              typeNamespace: refTypeNamespace,
+            });
           }
           const refSimpleType = this.getNamespaceSimpleTypeMap(refTypeNamespace).get(refTypeName);
           if (refSimpleType) {
@@ -582,19 +592,40 @@ export class SOAPLoader {
               soapAnnotations.bodyAlias = this.bodyAlias;
             }
             if (this.soapHeaders) {
-              soapAnnotations.soapHeaders = this.soapHeaders;
+              let resolvedSoapHeaders = this.soapHeaders;
+              // Auto-detect header element namespace from WSDL binding when not provided
+              if (resolvedSoapHeaders.headers && !resolvedSoapHeaders.namespace) {
+                outerLoop: for (const h of bindingInput?.header ?? []) {
+                  const [msgNsAlias, msgName] = (h.attributes?.message ?? '').split(':');
+                  const msgNs =
+                    bindingAliasMap?.get(msgNsAlias) || serviceAndPortAliasMap.get(msgNsAlias);
+                  if (!msgNs) continue;
+                  const msgObj = this.getNamespaceMessageMap(msgNs).get(msgName);
+                  if (!msgObj) continue;
+                  const partAttrName = h.attributes?.part;
+                  const part = (msgObj.part ?? []).find(p => p.attributes?.name === partAttrName);
+                  if (!part?.attributes?.element) continue;
+                  const [elemNsAlias, elemLocalName] = part.attributes.element.split(':');
+                  const msgAliasMapHdr = this.aliasMap?.get(msgObj);
+                  const elemNs =
+                    msgAliasMapHdr?.get(elemNsAlias) || bindingAliasMap?.get(elemNsAlias);
+                  if (!elemNs) continue;
+                  const nsAlias =
+                    [...serviceAndPortAliasMap.entries()].find(([, uri]) => uri === elemNs)?.[0] ??
+                    [...(bindingAliasMap?.entries() ?? [])].find(([, uri]) => uri === elemNs)?.[0];
+                  resolvedSoapHeaders = {
+                    ...resolvedSoapHeaders,
+                    namespace: elemNs,
+                    ...(nsAlias ? { alias: nsAlias } : {}),
+                    ...(elemLocalName ? { headers: { [elemLocalName]: resolvedSoapHeaders.headers } } : {}),
+                  };
+                  break outerLoop;
+                }
+              }
+              soapAnnotations.soapHeaders = resolvedSoapHeaders;
             }
-            rootTC.addFields({
-              [operationFieldName]: {
-                type,
-                directives: [
-                  {
-                    name: 'soap',
-                    args: soapAnnotations,
-                  },
-                ],
-              },
-            });
+            // Pre-compute the correct bindingNamespace from the first body part BEFORE
+            // addFields, because ...soapAnnotations spread captures the value at call time.
             const inputObj = operationObj.input[0];
             const [inputMessageNamespaceAlias, inputMessageName] =
               inputObj.attributes.message.split(':');
@@ -610,6 +641,49 @@ export class SOAPLoader {
               );
             }
             const aliasMap = this.aliasMap.get(inputMessageObj);
+            for (const part of inputMessageObj.part) {
+              const partName = part.attributes.name;
+              if (soapHeaderPartNames.has(partName)) continue;
+              if (soapBodyPartNames.size > 0 && !soapBodyPartNames.has(partName)) continue;
+              if (part.attributes.element) {
+                const [elementNamespaceAlias, elementName] = part.attributes.element.split(':');
+                if (soapAnnotations.bindingNamespace === bindingNamespace) {
+                  const resolvedNs =
+                    aliasMap?.get(elementNamespaceAlias) ||
+                    part.attributes[elementNamespaceAlias as keyof WSDLPartAttributes];
+                  if (resolvedNs) {
+                    const elementRef = this.namespaceElementRefMap.get(resolvedNs)?.get(elementName);
+                    let finalNs = elementRef ? elementRef.typeNamespace : resolvedNs;
+                    if (finalNs === definitionNamespace) {
+                      for (const [ns, typeMap] of this.namespaceComplexTypesMap) {
+                        if (ns !== finalNs && typeMap.has(elementName)) {
+                          finalNs = ns;
+                          break;
+                        }
+                      }
+                    }
+                    soapAnnotations.bindingNamespace = finalNs;
+                  }
+                }
+              }
+              break; // only the first body part determines the binding namespace
+            }
+            rootTC.addFields({
+              [operationFieldName]: {
+                type,
+                directives: [
+                  {
+                    name: 'soap',
+                    args: {
+                      ...soapAnnotations,
+                      namespaceMap: soapAnnotations.namespaceMap
+                        ? Object.entries(soapAnnotations.namespaceMap).map(([alias, uri]) => ({ alias, uri }))
+                        : undefined,
+                    },
+                  },
+                ],
+              },
+            });
             for (const part of inputMessageObj.part) {
               const partName = part.attributes.name;
 
@@ -786,10 +860,19 @@ export class SOAPLoader {
     typeName: string;
     typeNamespace: string;
   }) {
-    // Check element aliases first — consistent with the eager path that overwrites the type map
+    // Resolve one level of element→type indirection without recursing through elementRef again,
+    // which would cause infinite loops when an element's name matches its type name (e.g.
+    // `<xs:element name="Foo" type="tns:Foo"/>`).
     const elementRef = this.namespaceElementRefMap.get(typeNamespace)?.get(typeName);
     if (elementRef) {
-      return this.getInputTypeForTypeNameInNamespace(elementRef);
+      const refComplexType = this.getNamespaceComplexTypeMap(elementRef.typeNamespace)?.get(elementRef.typeName);
+      if (refComplexType) {
+        return this.getInputTypeForComplexType(refComplexType, elementRef.typeNamespace);
+      }
+      const refSimpleType = this.getNamespaceSimpleTypeMap(elementRef.typeNamespace)?.get(elementRef.typeName);
+      if (refSimpleType) {
+        return this.getTypeForSimpleType(refSimpleType, elementRef.typeNamespace);
+      }
     }
     const complexType = this.getNamespaceComplexTypeMap(typeNamespace)?.get(typeName);
     if (complexType) {
@@ -1297,10 +1380,19 @@ export class SOAPLoader {
     typeName: string;
     typeNamespace: string;
   }) {
-    // Check element aliases first — consistent with the eager path that overwrites the type map
+    // Resolve one level of element→type indirection without recursing through elementRef again,
+    // which would cause infinite loops when an element's name matches its type name (e.g.
+    // `<xs:element name="Foo" type="tns:Foo"/>`).
     const elementRef = this.namespaceElementRefMap.get(typeNamespace)?.get(typeName);
     if (elementRef) {
-      return this.getOutputTypeForTypeNameInNamespace(elementRef);
+      const refComplexType = this.getNamespaceComplexTypeMap(elementRef.typeNamespace)?.get(elementRef.typeName);
+      if (refComplexType) {
+        return this.getOutputTypeForComplexType(refComplexType, elementRef.typeNamespace);
+      }
+      const refSimpleType = this.getNamespaceSimpleTypeMap(elementRef.typeNamespace)?.get(elementRef.typeName);
+      if (refSimpleType) {
+        return this.getTypeForSimpleType(refSimpleType, elementRef.typeNamespace);
+      }
     }
     const complexType = this.getNamespaceComplexTypeMap(typeNamespace)?.get(typeName);
     if (complexType) {
