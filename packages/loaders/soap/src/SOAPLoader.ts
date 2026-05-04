@@ -707,7 +707,7 @@ export class SOAPLoader {
                     name: 'soap',
                     args: {
                       ...soapAnnotations,
-                      namespaceMap: soapAnnotations.namespaceMap
+                      namespaceMap: soapAnnotations.namespaceMap && Object.keys(soapAnnotations.namespaceMap).length > 0
                         ? Object.entries(soapAnnotations.namespaceMap).map(([alias, uri]) => ({ alias, uri }))
                         : undefined,
                     },

@@ -6,7 +6,9 @@ exports[`SOAP Loader should create executor for a service with mutations and que
   mutation: Mutation
 }
 
-directive @soap(elementName: String, bindingNamespace: String, endpoint: String, subgraph: String, bodyAlias: String, soapHeaders: SOAPHeaders, soapAction: String, soapNamespace: String) on FIELD_DEFINITION
+directive @soap(elementName: String, bindingNamespace: String, endpoint: String, subgraph: String, bodyAlias: String, soapHeaders: SOAPHeaders, soapAction: String, soapNamespace: String, namespaceMap: [NamespaceEntry!]) on FIELD_DEFINITION
+
+directive @soapType(namespace: String) on INPUT_OBJECT
 
 type Query {
   placeholder: Void
@@ -16,15 +18,15 @@ type Query {
 scalar Void
 
 type Mutation {
-  NumberConversion_NumberConversion_NumberConversionSoap_NumberToWords(NumberToWords: NumberConversion_NumberToWords_Input): NumberConversion_NumberToWordsResponse @soap(elementName: "NumberToWordsResponse", bindingNamespace: "http://www.dataaccess.com/webservicesserver/", endpoint: "https://www.dataaccess.com/webservicesserver/NumberConversion.wso", subgraph: "Test", soapNamespace: "http://schemas.xmlsoap.org/soap/envelope/", namespaceMap: null)
-  NumberConversion_NumberConversion_NumberConversionSoap_NumberToDollars(NumberToDollars: NumberConversion_NumberToDollars_Input): NumberConversion_NumberToDollarsResponse @soap(elementName: "NumberToDollarsResponse", bindingNamespace: "http://www.dataaccess.com/webservicesserver/", endpoint: "https://www.dataaccess.com/webservicesserver/NumberConversion.wso", subgraph: "Test", soapNamespace: "http://schemas.xmlsoap.org/soap/envelope/", namespaceMap: null)
+  NumberConversion_NumberConversion_NumberConversionSoap_NumberToWords(NumberToWords: NumberConversion_NumberToWords_Input): NumberConversion_NumberToWordsResponse @soap(elementName: "NumberToWordsResponse", bindingNamespace: "http://www.dataaccess.com/webservicesserver/", endpoint: "https://www.dataaccess.com/webservicesserver/NumberConversion.wso", subgraph: "Test", soapNamespace: "http://schemas.xmlsoap.org/soap/envelope/", namespaceMap: [{alias: "xs", uri: "http://www.w3.org/2001/XMLSchema"}, {alias: "soap", uri: "http://schemas.xmlsoap.org/wsdl/soap/"}, {alias: "tns", uri: "http://www.dataaccess.com/webservicesserver/"}])
+  NumberConversion_NumberConversion_NumberConversionSoap_NumberToDollars(NumberToDollars: NumberConversion_NumberToDollars_Input): NumberConversion_NumberToDollarsResponse @soap(elementName: "NumberToDollarsResponse", bindingNamespace: "http://www.dataaccess.com/webservicesserver/", endpoint: "https://www.dataaccess.com/webservicesserver/NumberConversion.wso", subgraph: "Test", soapNamespace: "http://schemas.xmlsoap.org/soap/envelope/", namespaceMap: [{alias: "xs", uri: "http://www.w3.org/2001/XMLSchema"}, {alias: "soap", uri: "http://schemas.xmlsoap.org/wsdl/soap/"}, {alias: "tns", uri: "http://www.dataaccess.com/webservicesserver/"}])
 }
 
 type NumberConversion_NumberToWordsResponse {
   NumberToWordsResult: String
 }
 
-input NumberConversion_NumberToWords_Input {
+input NumberConversion_NumberToWords_Input @soapType(namespace: "http://www.dataaccess.com/webservicesserver/") {
   ubiNum: BigInt
 }
 
@@ -37,7 +39,7 @@ type NumberConversion_NumberToDollarsResponse {
   NumberToDollarsResult: String
 }
 
-input NumberConversion_NumberToDollars_Input {
+input NumberConversion_NumberToDollars_Input @soapType(namespace: "http://www.dataaccess.com/webservicesserver/") {
   dNum: Float
 }
 
@@ -47,5 +49,10 @@ input SOAPHeaders {
   headers: ObjMap
 }
 
-scalar ObjMap"
+scalar ObjMap
+
+input NamespaceEntry {
+  alias: String!
+  uri: String!
+}"
 `;

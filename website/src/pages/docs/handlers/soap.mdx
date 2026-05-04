@@ -29,7 +29,7 @@ sources:
 
 ## Headers
 
-If you want to add SOAP headers to the request body like below;
+If you want to add SOAP headers to the request body like below:
 
 ```xml
 <soap:Envelope xmlns:soap="http://www.w3.org/2003/05/soap-envelope" xmlns:header="http://foo.com/">
@@ -41,7 +41,7 @@ If you want to add SOAP headers to the request body like below;
    </soap:Header>
 ```
 
-You can add the headers to the configuration like below;
+You can add the headers to the configuration like below:
 
 ```yaml
 sources:
@@ -56,6 +56,50 @@ sources:
               UserName: user
               Password: password
 ```
+
+When the WSDL defines a `soap:header` binding that references a typed message element, you can
+omit `namespace` and `alias` — the loader will auto-detect them from the WSDL:
+
+```yaml
+sources:
+  - name: MyService
+    handler:
+      soap:
+        source: ...
+        soapHeaders:
+          headers:
+            UserName: myuser
+            Password: mypass
+```
+
+### soap:header vs soap:body arguments
+
+Operations whose WSDL binding marks certain message parts as `soap:header` have those parts
+excluded from the generated GraphQL field arguments. Only `soap:body` parts appear as arguments,
+keeping the GraphQL schema clean and matching the actual wire format.
+
+## Multi-namespace WSDLs
+
+When a WSDL imports XSD schemas that live in a different XML namespace from the WSDL
+`targetNamespace`, Mesh automatically resolves the correct namespace for each element and field.
+
+For example, if a WSDL declares `targetNamespace="http://example.com/service"` but the body
+element type is defined in `http://example.com/types`, the generated request XML will use the
+correct namespace prefix:
+
+```xml
+<soap:Envelope xmlns:soap="..." xmlns:ns2="http://example.com/types">
+  <soap:Body>
+    <ns2:GetData>
+      <ns2:Id>123</ns2:Id>
+    </ns2:GetData>
+  </soap:Body>
+</soap:Envelope>
+```
+
+No extra configuration is needed — the loader reads the `xmlns` declarations from the WSDL and
+propagates them through the `@soap` directive so the executor can use the right prefix for every
+element.
 
 ## Body Alias
 
