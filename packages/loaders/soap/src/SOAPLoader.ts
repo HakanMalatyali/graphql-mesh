@@ -860,10 +860,19 @@ export class SOAPLoader {
     typeName: string;
     typeNamespace: string;
   }) {
-    // Check element aliases first — consistent with the eager path that overwrites the type map
+    // Resolve one level of element→type indirection without recursing through elementRef again,
+    // which would cause infinite loops when an element's name matches its type name (e.g.
+    // `<xs:element name="Foo" type="tns:Foo"/>`).
     const elementRef = this.namespaceElementRefMap.get(typeNamespace)?.get(typeName);
     if (elementRef) {
-      return this.getInputTypeForTypeNameInNamespace(elementRef);
+      const refComplexType = this.getNamespaceComplexTypeMap(elementRef.typeNamespace)?.get(elementRef.typeName);
+      if (refComplexType) {
+        return this.getInputTypeForComplexType(refComplexType, elementRef.typeNamespace);
+      }
+      const refSimpleType = this.getNamespaceSimpleTypeMap(elementRef.typeNamespace)?.get(elementRef.typeName);
+      if (refSimpleType) {
+        return this.getTypeForSimpleType(refSimpleType, elementRef.typeNamespace);
+      }
     }
     const complexType = this.getNamespaceComplexTypeMap(typeNamespace)?.get(typeName);
     if (complexType) {
@@ -1371,10 +1380,19 @@ export class SOAPLoader {
     typeName: string;
     typeNamespace: string;
   }) {
-    // Check element aliases first — consistent with the eager path that overwrites the type map
+    // Resolve one level of element→type indirection without recursing through elementRef again,
+    // which would cause infinite loops when an element's name matches its type name (e.g.
+    // `<xs:element name="Foo" type="tns:Foo"/>`).
     const elementRef = this.namespaceElementRefMap.get(typeNamespace)?.get(typeName);
     if (elementRef) {
-      return this.getOutputTypeForTypeNameInNamespace(elementRef);
+      const refComplexType = this.getNamespaceComplexTypeMap(elementRef.typeNamespace)?.get(elementRef.typeName);
+      if (refComplexType) {
+        return this.getOutputTypeForComplexType(refComplexType, elementRef.typeNamespace);
+      }
+      const refSimpleType = this.getNamespaceSimpleTypeMap(elementRef.typeNamespace)?.get(elementRef.typeName);
+      if (refSimpleType) {
+        return this.getTypeForSimpleType(refSimpleType, elementRef.typeNamespace);
+      }
     }
     const complexType = this.getNamespaceComplexTypeMap(typeNamespace)?.get(typeName);
     if (complexType) {
