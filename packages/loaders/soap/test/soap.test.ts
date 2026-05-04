@@ -4,7 +4,7 @@ import { globalAgent } from 'https';
 import { join } from 'path';
 import { parse } from 'graphql';
 import type { MeshFetch } from '@graphql-mesh/types';
-import { printSchemaWithDirectives } from '@graphql-tools/utils';
+import { getDirectiveExtensions, printSchemaWithDirectives } from '@graphql-tools/utils';
 import { fetch } from '@whatwg-node/fetch';
 import { dummyLogger as logger } from '../../../testing/dummyLogger';
 import { createExecutorFromSchemaAST, SOAPLoader } from '../src/index.js';
@@ -67,5 +67,54 @@ describe('SOAP Loader', () => {
     }
 
     expect(err).toBeUndefined();
+  });
+
+  it('should exclude soap:header parts from field arguments', async () => {
+    const soapLoader = new SOAPLoader({
+      subgraphName: 'AuthService',
+      fetch,
+      logger,
+    });
+    const wsdl = await fsPromises.readFile(
+      join(__dirname, './fixtures/header-body-parts.wsdl'),
+      'utf8',
+    );
+    await soapLoader.loadWSDL(wsdl);
+    const schema = soapLoader.buildSchema();
+    const mutation = schema.getMutationType();
+    const field = mutation?.getFields()['AuthService_AuthService_AuthServicePort_SendMessage'];
+
+    expect(field).toBeDefined();
+
+    const argNames = (field?.args ?? []).map(a => a.name);
+    // The body part element (SendMessage) must be present as an argument
+    expect(argNames).toContain('SendMessage');
+    // The header part element (AuthToken) must NOT appear as a body argument
+    expect(argNames).not.toContain('AuthToken');
+  });
+
+  it('should resolve bindingNamespace from the XSD element namespace, not the WSDL targetNamespace', async () => {
+    const soapLoader = new SOAPLoader({
+      subgraphName: 'TypesService',
+      fetch,
+      logger,
+    });
+    const wsdl = await fsPromises.readFile(
+      join(__dirname, './fixtures/cross-namespace.wsdl'),
+      'utf8',
+    );
+    await soapLoader.loadWSDL(wsdl);
+    const schema = soapLoader.buildSchema();
+    // GetData starts with "get" so it is placed on Query
+    const query = schema.getQueryType();
+    const field = query?.getFields()['TypesService_TypesService_TypesServicePort_GetData'];
+
+    expect(field).toBeDefined();
+
+    const soapDir = getDirectiveExtensions<{ soap: { bindingNamespace: string } }>(
+      field!,
+    )?.soap?.[0];
+    // Must be the XSD type namespace (http://example.com/types), not the WSDL tns
+    expect(soapDir?.bindingNamespace).toBe('http://example.com/types');
   });
 });

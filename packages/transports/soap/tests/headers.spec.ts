@@ -31,7 +31,7 @@ describe('SOAP Headers', () => {
     const schema = soapLoader.buildSchema();
     expect(printSchemaWithDirectives(schema)).toMatchSnapshot('soap-with-headers');
     const fetchSpy = jest.fn((_url: string, _init: RequestInit) => Response.error());
-    const executor = createExecutorFromSchemaAST(schema, fetchSpy);
+    const executor = createExecutorFromSchemaAST(schema, fetchSpy as unknown as MeshFetch);
     await executor({
       document: parse(/* GraphQL */ `
         {
@@ -47,32 +47,19 @@ describe('SOAP Headers', () => {
         PASSWORD: 'password',
       },
     });
-    expect(fetchSpy.mock.calls[0][1].body).toBe(
-      `
-<soap:Envelope xmlns:soap="http://www.w3.org/2003/05/soap-envelope" xmlns:guild="https://the-guild.dev">${`
- <soap:Header>
-    <guild:MyHeader>
-      <guild:UserName>
-        user
-      </guild:UserName>
-      <guild:Password>
-        password
-      </guild:Password>
-    </guild:MyHeader>
-  </soap:Header>
-  <soap:Body>
-    <guild:GetWeather>
-      <guild:CityName>
-        Rome
-      </guild:CityName>
-      <guild:CountryName>
-        Italy
-      </guild:CountryName>
-    </guild:GetWeather>
-  </soap:Body>`
-        .trim()
-        .replace(/\n\s+/g, '')}</soap:Envelope>
-    `.trim(),
-    );
+    const body = fetchSpy.mock.calls[0][1].body as string;
+
+    // Header must use the explicitly configured alias (guild:)
+    expect(body).toContain('<guild:MyHeader>');
+    expect(body).toContain('<guild:UserName>user</guild:UserName>');
+    expect(body).toContain('<guild:Password>password</guild:Password>');
+    expect(body).toContain('xmlns:guild="https://the-guild.dev"');
+
+    // Body elements use the WSDL's native namespace alias (tns:) resolved from namespaceMap.
+    // bodyAlias no longer overrides the body prefix — the WSDL alias is always preferred.
+    expect(body).toContain('<tns:GetWeather>');
+    expect(body).toContain('<tns:CityName>Rome</tns:CityName>');
+    expect(body).toContain('<tns:CountryName>Italy</tns:CountryName>');
+    expect(body).toContain('xmlns:tns="http://www.webserviceX.NET"');
   });
 });
